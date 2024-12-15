@@ -208,6 +208,13 @@
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
+    <!-- Testing mockito-->
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <version>5.4.0</version> <!-- Use the latest version -->
+      <scope>test</scope>
+    </dependency>
     <dependency>
        <!-- needed by ZooKeeper server tests utilities -->
        <groupId>org.junit.jupiter</groupId>
