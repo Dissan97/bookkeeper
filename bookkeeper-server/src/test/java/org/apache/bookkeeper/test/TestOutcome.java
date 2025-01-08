@@ -5,6 +5,6 @@ public enum TestOutcome {
         VALID,
         OUT_OF_INDEX,
         BK_INVALID_PARAMETER,
-        NULL;
+        NULL, SERVER_ISSUE;
 
 }

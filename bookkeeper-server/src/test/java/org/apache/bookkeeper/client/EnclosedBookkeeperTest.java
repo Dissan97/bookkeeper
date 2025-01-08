@@ -3,6 +3,7 @@ package org.apache.bookkeeper.client;
 import org.apache.bookkeeper.conf.TestConfig;
 import org.apache.bookkeeper.test.BookKeeperClusterTestCase;
 import org.apache.bookkeeper.test.TestOutcome;
+import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
@@ -14,6 +15,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -53,10 +55,10 @@ public abstract class EnclosedBookkeeperTest extends BookKeeperClusterTestCase {
         public static class CreateLedgerTest extends EnclosedBookkeeperTest {
 
                 private final TestOutcome testOutcome;
-                private final BookKeeper.DigestType dt;
+                private final DigestType dt;
                 private final byte[] password;
 
-                public CreateLedgerTest(TestOutcome testOutcome, BookKeeper.DigestType dt, byte[] password) {
+                public CreateLedgerTest(TestOutcome testOutcome, DigestType dt, byte[] password) {
                         this.testOutcome = testOutcome;
                         this.dt = dt;
                         this.password = password;
@@ -108,12 +110,12 @@ public abstract class EnclosedBookkeeperTest extends BookKeeperClusterTestCase {
                 private final int ensSize;
                 private final int writeQSize;
                 private final int ackQSize;
-                private final BookKeeper.DigestType dt;
+                private final DigestType dt;
                 private final byte[] password;
                 private final Map<String, byte[]> customMetadata;
 
                 public CreateLedger6ParamsTest(TestOutcome testOutcome, int ensSize, int writeQSize, int ackQSize,
-                                               BookKeeper.DigestType dt, byte[] password,
+                                               DigestType dt, byte[] password,
                                                Map<String, byte[]> customMetadata) {
                         this.testOutcome = testOutcome;
                         this.ensSize = ensSize;
@@ -138,32 +140,78 @@ public abstract class EnclosedBookkeeperTest extends BookKeeperClusterTestCase {
                                                 DigestType.DUMMY, null,
                                                 Collections.emptyMap()
                                         },
+                                        // server side exception
                                         {
-                                                TestOutcome.NULL, 3, 3, 3,
+                                                TestOutcome.SERVER_ISSUE, 0, 3, 3,
+                                                DigestType.CRC32, TestConfig.LEDGER_PASSWORD,
+                                                Collections.emptyMap()
+                                        },
+                                        // illegal argument exception
+                                        {
+
+                                        },
+                                        // valid test
+                                        {
+                                                TestOutcome.VALID, 3, 3, 3,
                                                 DigestType.DUMMY, TestConfig.LEDGER_PASSWORD,
+                                                Collections.emptyMap()
+                                        },
+                                        {
+                                                TestOutcome.VALID, 3, 3, 3,
+                                                DigestType.MAC, TestConfig.LEDGER_PASSWORD,
+                                                Collections.emptyMap()
+                                        },
+                                        {
+                                                TestOutcome.VALID, 3, 3, 3,
+                                                DigestType.CRC32, TestConfig.LEDGER_PASSWORD,
+                                                Collections.emptyMap()
+                                        },
+                                        {
+                                                TestOutcome.VALID, 3, 3, 3,
+                                                DigestType.CRC32C, TestConfig.LEDGER_PASSWORD,
                                                 Collections.emptyMap()
                                         }
                                 }
                         );
                 }
+
+                /**
+                 * There is some problem with Bookkeeper server when passing esSize < 0 or esnSize = 0
+                 * and ensSize <= writeQuorumSize
+                 */
+                private static final long MILLIS_TO_WAIT = 10000L;
                 @Test
                 @Override
                 public void doTest() {
                         boolean passed = false;
                         try {
-                                LedgerHandle lh = super.testClient.createLedger(
-                                        1, this.writeQSize, this.ackQSize,
-                                        this.dt,
-                                        this.password,
-                                        this.customMetadata);
+                                LedgerHandle lh;
+                                if (this.testOutcome.equals(TestOutcome.SERVER_ISSUE)){
+                                        AtomicReference<LedgerHandle> handle = new AtomicReference<>(null);
+                                        Thread watcher = getWatcher(handle);
+                                        watcher.join(MILLIS_TO_WAIT);
+                                        watcher.interrupt();
+                                        lh = handle.get();
+                                        passed = lh == null;
 
-                                lh.close();
+                                }else {
+                                        lh = createLedger(
+                                                super.testClient, this.ensSize,
+                                                this.writeQSize,
+                                                this.ackQSize,
+                                                this.dt,
+                                                this.password,
+                                                this.customMetadata
+                                        );
+                                        lh.close();
 
-                                super.testClient.openLedger(
-                                        0, this.dt,
-                                        this.password
-                                );
-                                passed = this.testOutcome.equals(TestOutcome.VALID);
+                                        super.testClient.openLedger(
+                                                0, this.dt,
+                                                this.password
+                                        );
+                                        passed = this.testOutcome.equals(TestOutcome.VALID);
+                                }
+
                         } catch (BKException e) {
                                 log.info("testing exception {}",e.getCode());
                         }catch (NullPointerException e){
@@ -172,6 +220,40 @@ public abstract class EnclosedBookkeeperTest extends BookKeeperClusterTestCase {
                                 fail();
                         }
                         assertTrue(passed);
+                }
+
+                @NotNull
+                private Thread getWatcher(AtomicReference<LedgerHandle> handle) throws InterruptedException {
+
+                        return new Thread(() -> {
+                                try {
+                                        handle.set(createLedger(
+                                                super.testClient, this.ensSize,
+                                                this.writeQSize,
+                                                this.ackQSize,
+                                                this.dt,
+                                                this.password,
+                                                this.customMetadata
+                                        ));
+
+                                } catch (BKException | InterruptedException ignored) {
+
+                                }
+                        });
+                }
+
+                public static LedgerHandle createLedger(BookKeeper client,int ensSize,
+                                                  int wQSize,
+                                                  int ackQSize,
+                                                  DigestType dt,
+                                                  byte[] password,
+                                                  Map<String, byte[]> customMetadata)
+                        throws BKException, InterruptedException {
+                        return client.createLedger(
+                                ensSize, wQSize, ackQSize,
+                                dt,
+                                password,
+                                customMetadata);
                 }
         }
 }
