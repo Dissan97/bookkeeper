@@ -1,0 +1,37 @@
+name: Java CI with Maven (Java 8)
+
+on:
+  push:
+    branches: [sw_testing]
+  pull_request:
+    branches: [sw_testing]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      - name: Build with Maven
+        run: mvn clean install
+
+      - name: coverage jacoco
+        run: mvn verify -Pjacoco-profile
+
+      - name: coverage ba-dua
+        run: mvn verify -Pbadua-profile

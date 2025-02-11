@@ -1,10 +1,18 @@
 package org.apache.bookkeeper.test;
 
-public enum TestOutcome {
+public enum TestOutcome{
+    /**When all the setup match requirements*/
+    VALID,
+    INCORRECT_PARAMETER_EXCEPTION,
+    /** When data is null*/
+    NULL,
+    BK_READ_EXCEPTION,
+    /**When is passed negative values or offset + length > data length*/
+    ARRAY_INDEX_EXCEPTION,
 
-        VALID,
-        OUT_OF_INDEX,
-        BK_INVALID_PARAMETER,
-        NULL, SERVER_ISSUE;
+    SERVER_ISSUE,
+    ALREADY_EXISTS,
+    INVALID_CALLBACK, CLOSED, BK_EXCEPTION, BK_EXIST;
+
 
 }
